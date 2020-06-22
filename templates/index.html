@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    
+    <title>Document</title>
+    <link rel="stylesheet" href="static/index.css">
+
+
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+</head>
+    <body>
+
+    <div id="container">
+      <table cellpadding="0" cellspacing="0" width="100%" border="0">
+        <tr>
+          <td></td>
+          <td>
+            <div class="text-center">
+              <span>Current Filter: </span><span id="filterName">Pass Through</span>
+            </div>
+          </td>
+          <td>
+            <div>Select Filter:</div>
+          </td>
+          <td></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <canvas class="center-block" id="canvasOutput" width=320 height=240></canvas>
+          </td>
+          <td>
+            <div id="guiContainer"></div>
+          </td>
+          <td></td>
+        </tr>
+      </table>
+      <div class="invisible">
+        <video id="video" class="hidden">Your browser does not support the video tag.</video>
+      </div>
+    </div>
+    <script>
+        // In this case, We set width 320, and the height will be computed based on the input stream.
+let width = 320;
+let height = 0;
+
+// whether streaming video from the camera.
+let streaming = false;
+
+let video = document.getElementById("video");
+let stream = null;
+let vc = null;
+
+function startCamera() {
+  if (streaming) return;
+  navigator.mediaDevices.getUserMedia({video: true, audio: false})
+    .then(function(s) {
+    stream = s;
+    video.srcObject = s;
+    video.play();
+  })
+    .catch(function(err) {
+    console.log("An error occured! " + err);
+  });
+
+  video.addEventListener("canplay", function(ev){
+    if (!streaming) {
+      height = video.videoHeight / (video.videoWidth/width);
+      video.setAttribute("width", width);
+      video.setAttribute("height", height);
+      streaming = true;
+      vc = new cv.VideoCapture(video);
+    }
+    startVideoProcessing();
+  }, false);
+}
+
+let lastFilter = '';
+let src = null;
+let dstC1 = null;
+let dstC3 = null;
+let dstC4 = null;
+
+function startVideoProcessing() {
+  if (!streaming) { console.warn("Please startup your webcam"); return; }
+  stopVideoProcessing();
+  src = new cv.Mat(height, width, cv.CV_8UC4);
+  dstC1 = new cv.Mat(height, width, cv.CV_8UC1);
+  dstC3 = new cv.Mat(height, width, cv.CV_8UC3);
+  dstC4 = new cv.Mat(height, width, cv.CV_8UC4);
+  requestAnimationFrame(processVideo);
+}
+
+function passThrough(src) {
+  return src;
+}
+
+function gray(src) {
+  cv.cvtColor(src, dstC1, cv.COLOR_RGBA2GRAY);
+  return dstC1;
+}
+
+
+function processVideo() {
+  stats.begin();
+  vc.read(src);
+  let result;
+  switch (controls.filter) {
+    case 'passThrough': result = passThrough(src); break;
+    case 'gray': result = gray(src); break;
+    
+    default: result = passThrough(src);
+  }
+  cv.imshow("canvasOutput", result);
+  stats.end();
+  lastFilter = controls.filter;
+  requestAnimationFrame(processVideo);
+}
+
+function stopVideoProcessing() {
+  if (src != null && !src.isDeleted()) src.delete();
+  if (dstC1 != null && !dstC1.isDeleted()) dstC1.delete();
+  if (dstC3 != null && !dstC3.isDeleted()) dstC3.delete();
+  if (dstC4 != null && !dstC4.isDeleted()) dstC4.delete();
+}
+
+function stopCamera() {
+  if (!streaming) return;
+  stopVideoProcessing();
+  document.getElementById("canvasOutput").getContext("2d").clearRect(0, 0, width, height);
+  video.pause();
+  video.srcObject=null;
+  stream.getVideoTracks()[0].stop();
+  streaming = false;
+}
+
+var stats = null;
+
+var filters = {
+  'passThrough': 'Pass Through',
+  'gray': 'Gray',
+  
+};
+
+var filterName = document.getElementById('filterName');
+
+var controls;
+
+function initUI() {
+  stats = new Stats();
+  stats.showPanel(0);
+  document.getElementById('container').appendChild(stats.domElement);
+
+  controls = {
+    filter: 'passThrough',
+    setFilter: function(filter) {
+      this.filter = filter;
+      filterName.innerHTML = filters[filter];
+    },
+    passThrough: function() { this.setFilter('passThrough'); },
+    gray: function() { this.setFilter('gray'); },
+  };
+  
+  let gui = new dat.GUI({ autoPlace: false });
+  let guiContainer = document.getElementById('guiContainer');
+  guiContainer.appendChild(gui.domElement);
+  
+  let lastFolder = null;
+  function closeLastFolder(folder) {
+    if (lastFolder != null && lastFolder != folder) {
+      lastFolder.close();
+    }
+    lastFolder = folder;
+  }
+
+  let passThrough = gui.add(controls, 'passThrough').name(filters['passThrough']).onChange(function() {
+    closeLastFolder(null);
+  });
+  
+  let colorConversion = gui.addFolder('Color Conversion');
+  colorConversion.add(controls, 'gray').name(filters['gray']).onChange(function() {
+    closeLastFolder(null);
+  });
+  
+}
+
+function opencvIsReady() {
+  console.log('Project is ready');
+  initUI();
+  startCamera();
+}
+    </script>
+    </body>
+    
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="https://threejs.org/examples/js/libs/stats.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.5/dat.gui.min.js"></script>
+    <script async src="https://huningxin.github.io/opencv.js/build/asm.js/opencv.js" onload="opencvIsReady()"></script>
+    
+     
+
+</html>
